@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>КиноПара — выбор фильмов для двоих</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0d14;
+      color: #f8fafc;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .glass {
+      background: rgba(24, 28, 42, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .card-swipe {
+      touch-action: pan-y;
+      transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+      will-change: transform;
+    }
+    .card-swipe.dragging {
+      transition: none;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.88); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-pop {
+      animation: popIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between max-w-md mx-auto relative selection:bg-rose-500 selection:text-white">
+
+  <!-- ЭКРАН ВЫБОРА КТО ЗАШЁЛ (ТОЛЬКО ОН ИЛИ ОНА) -->
+  <div id="roleScreen" class="fixed inset-0 z-50 bg-[#0b0d14] flex flex-col justify-center px-6 py-8">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center text-3xl shadow-xl shadow-rose-500/20">
+        🎬
+      </div>
+      <h1 class="text-2xl font-extrabold tracking-tight">КиноПара</h1>
+      <p class="text-sm text-slate-400 mt-1.5">Наше общее пространство для выбора фильмов</p>
+    </div>
+
+    <div class="glass rounded-3xl p-5 space-y-4">
+      <p class="text-center text-sm font-medium text-slate-300">Кто сейчас с этого телефона?</p>
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="selectRole('he')" class="p-4 rounded-2xl bg-slate-800/80 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-400 transition flex flex-col items-center gap-2 active:scale-95">
+          <span class="text-3xl">🙋‍♂️</span>
+          <span class="font-bold text-sm text-white">Я (Он)</span>
+        </button>
+        <button onclick="selectRole('she')" class="p-4 rounded-2xl bg-slate-800/80 hover:bg-rose-500/20 border border-white/10 hover:border-rose-400 transition flex flex-col items-center gap-2 active:scale-95">
+          <span class="text-3xl">🙋‍♀️</span>
+          <span class="font-bold text-sm text-white">Она</span>
+        </button>
+      </div>
+      <p class="text-[11px] text-center text-slate-500">Выбор сохранится на этом устройстве (сменить можно вверху)</p>
+    </div>
+  </div>
+
+  <!-- ОСНОВНОЙ ИНТЕРФЕЙС -->
+  <div id="mainApp" class="hidden flex-col min-h-screen justify-between">
+    <!-- ШАПКА -->
+    <header class="px-4 pt-4 pb-2 flex items-center justify-between sticky top-0 z-30 bg-[#0b0d14]/90 backdrop-blur-md">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center text-lg shadow-lg shadow-rose-500/20">
+          🍿
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <h1 class="font-bold text-base leading-none tracking-tight">КиноПара</h1>
+            <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Синхронизировано"></span>
+          </div>
+          <button onclick="switchRole()" id="currentRoleLabel" class="text-[11px] text-slate-400 hover:text-white mt-0.5 flex items-center gap-1">
+            Вы: Я (Он) · сменить
+          </button>
+        </div>
+      </div>
+
+      <button onclick="openQrModal()" class="glass px-3 py-1.5 rounded-xl text-xs font-medium text-slate-200 hover:text-white flex items-center gap-1.5 active:scale-95 transition">
+        <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6zm13 0h2v2h-2v-2zm3 3h2v3h-3v-3h1zm-3 2h2v1h-2v-1z"/>
+        </svg>
+        QR-код
+      </button>
+    </header>
+
+    <!-- КОНТЕНТ ВКЛАДОК -->
+    <main class="flex-1 px-4 pb-24 pt-1 flex flex-col">
+
+      <!-- 1. ВКЛАДКА: СВАЙПЫ -->
+      <section id="tab-swipe" class="flex-1 flex flex-col">
+        <!-- Фильтр жанров -->
+        <div id="genreChips" class="flex gap-1.5 overflow-x-auto no-scrollbar py-2 mb-1"></div>
+
+        <!-- Статус партнёра -->
+        <div class="flex items-center justify-between text-xs text-slate-400 px-1 mb-2">
+          <span id="partnerStatusText">Ждём лайков от пары 💕</span>
+          <button onclick="resetMySwipes()" class="text-slate-500 hover:text-slate-300 underline">Сбросить мои</button>
+        </div>
+
+        <!-- Контейнер карточки -->
+        <div id="cardContainer" class="relative flex-1 min-h-[400px] flex items-center justify-center my-1"></div>
+
+        <!-- Кнопки управления -->
+        <div id="swipeControls" class="flex items-center justify-center gap-6 py-3">
+          <button onclick="handleVote('dislike')" aria-label="Мимо" class="w-16 h-16 rounded-full glass border border-rose-500/30 text-rose-400 flex items-center justify-center text-2xl shadow-lg active:scale-90 transition hover:bg-rose-500/10">
+            ✕
+          </button>
+          <button onclick="handleVote('like')" aria-label="Хочу" class="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center text-2xl font-bold shadow-lg shadow-emerald-500/25 active:scale-90 transition">
+            ♥
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. ВКЛАДКА: СОВПАДЕНИЯ -->
+      <section id="tab-matches" class="hidden flex-1 flex flex-col space-y-3 pt-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold">Наши совпадения 💕</h2>
+          <button onclick="pickRandomMatch()" id="randomMatchBtn" class="hidden text-xs bg-rose-500/20 text-rose-300 border border-rose-500/30 px-3 py-1.5 rounded-xl font-semibold active:scale-95">
+            🎲 Выбрать 1 из них
+          </button>
+        </div>
+        <div id="matchesList" class="space-y-2.5"></div>
+      </section>
+
+      <!-- 3. ВКЛАДКА: РУЛЕТКА -->
+      <section id="tab-roulette" class="hidden flex-1 flex flex-col justify-center space-y-4 pt-2">
+        <div class="glass rounded-3xl p-5 space-y-4">
+          <div class="text-center">
+            <span class="text-3xl">🎰</span>
+            <h2 class="text-lg font-bold mt-1">Рулетка на вечер</h2>
+            <p class="text-xs text-slate-400">Если лень свайпать — доверимся случаю</p>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-slate-400 block mb-1">Жанр</label>
+              <select id="rouletteGenre" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none">
+                <option value="Все">Любой жанр</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs text-slate-400 block mb-1">Длительность</label>
+              <select id="rouletteDuration" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none">
+                <option value="999">Не важно</option>
+                <option value="110">До 1 ч 50 мин (покороче)</option>
+                <option value="135">До 2 ч 15 мин</option>
+              </select>
+            </div>
+          </div>
+
+          <button onclick="spinRoulette()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 to-amber-500 font-bold text-sm text-white shadow-lg shadow-rose-500/25 active:scale-95 transition">
+            Крутить рулетку 🎲
+          </button>
+
+          <div id="rouletteResult" class="hidden pt-2"></div>
+        </div>
+      </section>
+
+      <!-- 4. ВКЛАДКА: НАШ СПИСОК -->
+      <section id="tab-list" class="hidden flex-1 flex flex-col space-y-3 pt-2">
+        <h2 class="text-lg font-bold">Наш общий список 📝</h2>
+        <form onsubmit="addCustomMovie(event)" class="glass rounded-2xl p-3 space-y-2">
+          <input id="customTitle" type="text" required placeholder="Название фильма..." class="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-rose-400" />
+          <div class="flex gap-2">
+            <select id="customGenre" class="flex-1 bg-slate-900/80 border border-white/10 rounded-xl px-2.5 py-2 text-xs text-slate-200 outline-none">
+              <option value="Комедия">Комедия</option>
+              <option value="Триллер">Триллер</option>
+              <option value="Фантастика">Фантастика</option>
+              <option value="Драма">Драма</option>
+              <option value="Мелодрама">Мелодрама</option>
+              <option value="Мультфильм">Мультфильм</option>
+              <option value="Ужасы">Ужасы</option>
+            </select>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-xs font-bold text-white active:scale-95 transition">
+              + Добавить
+            </button>
+          </div>
+        </form>
+
+        <div id="allMoviesList" class="space-y-2 pb-4"></div>
+      </section>
+
+    </main>
+
+    <!-- НИЖНЯЯ НАВИГАЦИЯ -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass border-t border-white/10 px-2 py-2 flex justify-around z-30">
+      <button onclick="switchTab('swipe')" id="nav-swipe" class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-rose-400">
+        <span class="text-lg">🔥</span>
+        <span class="text-[11px] font-semibold">Свайпы</span>
+      </button>
+      <button onclick="switchTab('matches')" id="nav-matches" class="nav-btn relative flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-slate-400">
+        <span class="text-lg">💕</span>
+        <span class="text-[11px] font-medium">Мэтчи</span>
+        <span id="matchBadge" class="hidden absolute top-0.5 right-2 bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">0</span>
+      </button>
+      <button onclick="switchTab('roulette')" id="nav-roulette" class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-slate-400">
+        <span class="text-lg">🎰</span>
+        <span class="text-[11px] font-medium">Рулетка</span>
+      </button>
+      <button onclick="switchTab('list')" id="nav-list" class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-slate-400">
+        <span class="text-lg">📋</span>
+        <span class="text-[11px] font-medium">Список</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- МОДАЛКА: МЭТЧ! -->
+  <div id="matchModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+    <div class="glass rounded-3xl p-6 max-w-sm w-full text-center space-y-4 border border-rose-500/40 animate-pop">
+      <div class="text-5xl">🎉💕</div>
+      <div>
+        <h3 class="text-2xl font-extrabold bg-gradient-to-r from-rose-400 to-amber-300 bg-clip-text text-transparent">У вас мэтч!</h3>
+        <p class="text-xs text-slate-400 mt-1">Вы оба хотите посмотреть этот фильм</p>
+      </div>
+      <div id="matchModalMovie" class="bg-slate-900/90 rounded-2xl p-4 border border-white/10"></div>
+      <button onclick="closeMatchModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 font-bold text-sm text-white active:scale-95">
+        Отлично, продолжаем!
+      </button>
+    </div>
+  </div>
+
+  <!-- МОДАЛКА: QR-КОД ДЛЯ ДЕВУШКИ -->
+  <div id="qrModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6" onclick="if(event.target===this) closeQrModal()">
+    <div class="glass rounded-3xl p-6 max-w-xs w-full text-center space-y-4 animate-pop">
+      <h3 class="text-lg font-bold">Открыть на втором телефоне</h3>
+      <p class="text-xs text-slate-400">Пусть девушка наведёт камеру на код и выберет «Она»</p>
+      <div class="bg-white p-3.5 rounded-2xl inline-block mx-auto shadow-lg">
+        <div id="qrcode"></div>
+      </div>
+      <p id="qrUrlText" class="text-[11px] text-slate-400 break-all bg-slate-900/80 p-2 rounded-xl"></p>
+      <button onclick="closeQrModal()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white">
+        Закрыть
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_MOVIES = [
+      { id: 'm1', title: '1+1 (Неприкасаемые)', year: 2011, genre: 'Комедия', duration: 112, rating: '8.8', desc: 'Трогательная и смешная история дружбы аристократа и парня из пригорода.', color: 'from-amber-500/30 to-rose-600/30' },
+      { id: 'm2', title: 'Начало', year: 2010, genre: 'Фантастика', duration: 148, rating: '8.7', desc: 'Воры проникают в сны, чтобы внедрить идею в подсознание.', color: 'from-indigo-500/30 to-cyan-600/30' },
+      { id: 'm3', title: 'Достать ножи', year: 2019, genre: 'Триллер', duration: 130, rating: '8.1', desc: 'Стильный детектив с неожиданными поворотами в особняке писателя.', color: 'from-rose-600/30 to-orange-500/30' },
+      { id: 'm4', title: 'Ла-Ла Ленд', year: 2016, genre: 'Мелодрама', duration: 128, rating: '8.0', desc: 'История любви джазового музыканта и начинающей актрисы в Лос-Анджелесе.', color: 'from-purple-600/30 to-pink-500/30' },
+      { id: 'm5', title: 'Интерстеллар', year: 2014, genre: 'Фантастика', duration: 169, rating: '8.6', desc: 'Путешествие сквозь червоточину ради спасения человечества и возвращения к семье.', color: 'from-blue-600/30 to-slate-800/40' },
+      { id: 'm6', title: 'Остров проклятых', year: 2009, genre: 'Триллер', duration: 138, rating: '8.5', desc: 'Два маршала расследуют исчезновение пациентки из клиники на закрытом острове.', color: 'from-emerald-600/30 to-slate-800/40' },
+      { id: 'm7', title: 'Бойфренд из будущего', year: 2013, genre: 'Мелодрама', duration: 123, rating: '7.9', desc: 'Парень умеет путешествовать во времени и пытается сделать каждый день идеальным.', color: 'from-rose-500/30 to-amber-400/30' },
+      { id: 'm8', title: 'Душа', year: 2020, genre: 'Мультфильм', duration: 100, rating: '8.4', desc: 'Учитель музыки попадает в мир, где рождаются человеческие увлечения.', color: 'from-cyan-500/30 to-indigo-600/30' },
+      { id: 'm9', title: 'Джентльмены', year: 2019, genre: 'Комедия', duration: 113, rating: '8.6', desc: 'Криминальная комедия Гая Ричи о попытке продать бизнес в Лондоне.', color: 'from-amber-600/30 to-stone-700/40' },
+      { id: 'm10', title: 'Паразиты', year: 2019, genre: 'Триллер', duration: 132, rating: '8.5', desc: 'Остросюжетная социальная драма о двух семьях из разных миров.', color: 'from-teal-600/30 to-emerald-800/40' },
+      { id: 'm11', title: 'Зелёная книга', year: 2018, genre: 'Драма', duration: 130, rating: '8.5', desc: 'Турне гениального пианиста и его водителя-вышибалы по югу США.', color: 'from-emerald-500/30 to-amber-600/30' },
+      { id: 'm12', title: 'Тайна Коко', year: 2017, genre: 'Мультфильм', duration: 105, rating: '8.7', desc: 'Яркое музыкальное путешествие мальчика в Страну Мёртвых.', color: 'from-orange-500/30 to-purple-600/30' }
+    ];
+
+    const COUPLE_BUCKET_ID = 'kinopara_couple_shared_v1_' + btoa(location.host || 'local').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+    const SYNC_URL = `https://kvdb.io/A2bC3dE4fG5hI6jK7lM8nO/${COUPLE_BUCKET_ID}`;
+
+    let myRole = localStorage.getItem('kinopara_role') || null;
+    let selectedGenre = 'Все';
+    let shownMatchIds = new Set(JSON.parse(localStorage.getItem('kinopara_shown_matches') || '[]'));
+
+    let sharedState = {
+      movies: [...DEFAULT_MOVIES],
+      votes: { he: {}, she: {} },
+      watched: {}
+    };
+
+    const cached = localStorage.getItem('kinopara_state_cache');
+    if (cached) {
+      try { sharedState = { ...sharedState, ...JSON.parse(cached) }; } catch (e) {}
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (myRole) {
+        enterApp();
+      }
+      syncFromServer();
+      setInterval(syncFromServer, 3000);
+    });
+
+    function selectRole(role) {
+      myRole = role;
+      localStorage.setItem('kinopara_role', role);
+      enterApp();
+    }
+
+    function switchRole() {
+      myRole = myRole === 'he' ? 'she' : 'he';
+      localStorage.setItem('kinopara_role', myRole);
+      updateHeaderRole();
+      renderAll();
+    }
+
+    function enterApp() {
+      document.getElementById('roleScreen').classList.add('hidden');
+      document.getElementById('mainApp').classList.remove('hidden');
+      document.getElementById('mainApp').classList.add('flex');
+      updateHeaderRole();
+      renderAll();
+    }
+
+    function updateHeaderRole() {
+      const label = myRole === 'he' ? 'Вы: 🙋‍♂️ Я (Он) · сменить' : 'Вы: 🙋‍♀️ Она · сменить';
+      document.getElementById('currentRoleLabel').textContent = label;
+    }
+
+    async function syncFromServer() {
+      try {
+        const res = await fetch(SYNC_URL, { method: 'GET' });
+        if (res.ok) {
+          const remote = await res.json();
+          if (remote && remote.votes) {
+            sharedState = {
+              movies: remote.movies?.length ? remote.movies : DEFAULT_MOVIES,
+              votes: {
+                he: remote.votes.he || {},
+                she: remote.votes.she || {}
+              },
+              watched: remote.watched || {}
+            };
+            localStorage.setItem('kinopara_state_cache', JSON.stringify(sharedState));
+            document.getElementById('syncDot').className = 'w-2 h-2 rounded-full bg-emerald-400';
+            checkNewMatches();
+            renderAll();
+          }
+        }
+      } catch (e) {
+        document.getElementById('syncDot').className = 'w-2 h-2 rounded-full bg-amber-400';
+      }
+    }
+
+    async function pushToServer() {
+      localStorage.setItem('kinopara_state_cache', JSON.stringify(sharedState));
+      try {
+        await fetch(SYNC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sharedState)
+        });
+      } catch (e) {}
+    }
+
+    function checkNewMatches() {
+      const matches = getMatchedMovies();
+      for (const m of matches) {
+        if (!shownMatchIds.has(m.id)) {
+          shownMatchIds.add(m.id);
+          localStorage.setItem('kinopara_shown_matches', JSON.stringify([...shownMatchIds]));
+          showMatchPopup(m);
+          break;
+        }
+      }
+    }
+
+    function getMatchedMovies() {
+      return sharedState.movies.filter(m =>
+        sharedState.votes.he[m.id] === 'like' &&
+        sharedState.votes.she[m.id] === 'like'
+      );
+    }
+
+    function renderAll() {
+      if (!myRole) return;
+      renderGenres();
+      renderPartnerStatus();
+      renderSwipeCard();
+      renderMatches();
+      renderMovieList();
+    }
+
+    function renderGenres() {
+      const genres = ['Все', ...new Set(sharedState.movies.map(m => m.genre))];
+      const container = document.getElementById('genreChips');
+      container.innerHTML = genres.map(g => `
+        <button onclick="setGenre('${g}')" class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition ${
+          selectedGenre === g
+            ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+            : 'glass text-slate-300 hover:text-white'
+        }">${g}</button>
+      `).join('');
+
+      const rSelect = document.getElementById('rouletteGenre');
+      const currentVal = rSelect.value;
+      rSelect.innerHTML = genres.map(g => `<option value="${g}">${g === 'Все' ? 'Любой жанр' : g}</option>`).join('');
+      if (genres.includes(currentVal)) rSelect.value = currentVal;
+    }
+
+    function setGenre(g) {
+      selectedGenre = g;
+      renderGenres();
+      renderSwipeCard();
+    }
+
+    function renderPartnerStatus() {
+      const partnerRole = myRole === 'he' ? 'she' : 'he';
+      const partnerName = partnerRole === 'he' ? 'Он' : 'Она';
+      const partnerLikes = Object.values(sharedState.votes[partnerRole] || {}).filter(v => v === 'like').length;
+      document.getElementById('partnerStatusText').textContent =
+        partnerLikes > 0
+          ? `${partnerName} уже лайкнул(а) фильмов: ${partnerLikes} ❤️`
+          : `Ждём первых лайков от пары 💕`;
+    }
+
+    function getUnvotedMovies() {
+      const myVotes = sharedState.votes[myRole] || {};
+      return sharedState.movies.filter(m => {
+        const notVoted = !myVotes[m.id];
+        const genreMatch = selectedGenre === 'Все' || m.genre === selectedGenre;
+        return notVoted && genreMatch;
+      });
+    }
+
+    function renderSwipeCard() {
+      const container = document.getElementById('cardContainer');
+      const controls = document.getElementById('swipeControls');
+      const queue = getUnvotedMovies();
+
+      if (queue.length === 0) {
+        controls.classList.add('opacity-30', 'pointer-events-none');
+        container.innerHTML = `
+          <div class="glass rounded-3xl p-8 text-center space-y-3 w-full">
+            <div class="text-4xl">🎬✨</div>
+            <h3 class="font-bold text-lg">Фильмы в этой подборке закончились</h3>
+            <p class="text-xs text-slate-400">Выберите другой жанр, добавьте свои фильмы во вкладке «Список» или посмотрите совпадения.</p>
+            <button onclick="switchTab('matches')" class="mt-2 px-4 py-2.5 rounded-xl bg-rose-500 text-xs font-bold text-white">
+              Открыть мэтчи 💕
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      controls.classList.remove('opacity-30', 'pointer-events-none');
+      const movie = queue[0];
+      const partnerRole = myRole === 'he' ? 'she' : 'he';
+      const partnerLiked = sharedState.votes[partnerRole]?.[movie.id] === 'like';
+
+      container.innerHTML = `
+        <div id="activeCard" class="card-swipe w-full rounded-3xl p-6 glass bg-gradient-to-br ${movie.color || 'from-slate-800 to-slate-900'} border border-white/15 shadow-2xl flex flex-col justify-between min-h-[380px] select-none relative overflow-hidden">
+          <div class="flex items-center justify-between gap-2">
+            <span class="px-2.5 py-1 rounded-lg bg-black/40 text-xs font-semibold text-slate-200">${movie.genre}</span>
+            <div class="flex items-center gap-1.5">
+              ${partnerLiked ? `<span class="px-2.5 py-1 rounded-lg bg-rose-500/30 border border-rose-400/40 text-[11px] font-bold text-rose-200">❤️ Уже нравится паре!</span>` : ''}
+              <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs font-bold">★ ${movie.rating || '—'}</span>
+            </div>
+          </div>
+
+          <div class="my-auto py-6">
+            <p class="text-xs text-slate-300/80 font-medium">${movie.year || 'Фильм'} · ${movie.duration ? movie.duration + ' мин' : ''}</p>
+            <h2 class="text-2xl font-extrabold mt-1 leading-tight text-white">${movie.title}</h2>
+            <p class="text-sm text-slate-200/90 mt-3 leading-relaxed">${movie.desc || 'Добавлено в ваш общий список для просмотра вдвоём.'}</p>
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-300/70 pt-2 border-t border-white/10">
+            <span>← Свайп влево: мимо</span>
+            <span>Вправо: хочу →</span>
+          </div>
+        </div>
+      `;
+
+      attachDragHandlers(document.getElementById('activeCard'));
+    }
+
+    function attachDragHandlers(card) {
+      if (!card) return;
+      let startX = 0, currentX = 0, isDragging = false;
+
+      card.addEventListener('pointerdown', e => {
+        startX = e.clientX;
+        isDragging = true;
+        card.classList.add('dragging');
+      });
+
+      window.addEventListener('pointermove', e => {
+        if (!isDragging) return;
+        currentX = e.clientX - startX;
+        card.style.transform = `translateX(${currentX}px) rotate(${currentX * 0.04}deg)`;
+      });
+
+      window.addEventListener('pointerup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        card.classList.remove('dragging');
+        if (currentX > 95) {
+          handleVote('like');
+        } else if (currentX < -95) {
+          handleVote('dislike');
+        } else {
+          card.style.transform = '';
+        }
+        currentX = 0;
+      });
+    }
+
+    async function handleVote(choice) {
+      const queue = getUnvotedMovies();
+      if (!queue.length) return;
+      const movie = queue[0];
+
+      const card = document.getElementById('activeCard');
+      if (card) {
+        card.style.transform = `translateX(${choice === 'like' ? 320 : -320}px) rotate(${choice === 'like' ? 18 : -18}deg)`;
+        card.style.opacity = '0';
+      }
+
+      sharedState.votes[myRole][movie.id] = choice;
+
+      setTimeout(() => {
+        checkNewMatches();
+        renderAll();
+      }, 180);
+
+      await pushToServer();
+    }
+
+    async function resetMySwipes() {
+      sharedState.votes[myRole] = {};
+      renderAll();
+      await pushToServer();
+    }
+
+    function renderMatches() {
+      const matches = getMatchedMovies();
+      const badge = document.getElementById('matchBadge');
+      const randomBtn = document.getElementById('randomMatchBtn');
+      const list = document.getElementById('matchesList');
+
+      if (matches.length > 0) {
+        badge.textContent = matches.length;
+        badge.classList.remove('hidden');
+        randomBtn.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+        randomBtn.classList.add('hidden');
+      }
+
+      if (matches.length === 0) {
+        list.innerHTML = `
+          <div class="glass rounded-2xl p-6 text-center text-slate-400 text-sm">
+            Пока нет общих совпадений. Лайкайте фильмы — как только вы оба выберете один и тот же, он появится здесь!
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = matches.map(m => `
+        <div class="glass rounded-2xl p-4 flex items-center justify-between gap-3 ${sharedState.watched[m.id] ? 'opacity-50' : ''}">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="font-bold text-sm ${sharedState.watched[m.id] ? 'line-through' : ''}">${m.title}</h3>
+              <span class="text-[11px] text-amber-300 font-semibold">★ ${m.rating || '—'}</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">${m.genre} · ${m.year || ''} ${m.duration ? '· ' + m.duration + ' мин' : ''}</p>
+          </div>
+          <button onclick="toggleWatched('${m.id}')" class="px-3 py-1.5 rounded-xl text-xs font-semibold ${
+            sharedState.watched[m.id]
+              ? 'bg-emerald-500/20 text-emerald-300'
+              : 'bg-slate-800 text-slate-300 hover:text-white'
+          }">
+            ${sharedState.watched[m.id] ? '✓ Посмотрели' : 'Отметить'}
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function pickRandomMatch() {
+      const matches = getMatchedMovies().filter(m => !sharedState.watched[m.id]);
+      const pool = matches.length ? matches : getMatchedMovies();
+      if (!pool.length) return;
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      showMatchPopup(chosen, 'Случайный выбор из ваших мэтчей 🎲');
+    }
+
+    function showMatchPopup(movie, subtitle = 'Вы оба хотите посмотреть этот фильм') {
+      document.querySelector('#matchModal p').textContent = subtitle;
+      document.getElementById('matchModalMovie').innerHTML = `
+        <h4 class="font-bold text-lg text-white">${movie.title}</h4>
+        <p class="text-xs text-slate-400 mt-1">${movie.genre} · ${movie.year || ''} · ★ ${movie.rating || '—'}</p>
+      `;
+      document.getElementById('matchModal').classList.remove('hidden');
+    }
+
+    function closeMatchModal() {
+      document.getElementById('matchModal').classList.add('hidden');
+    }
+
+    function spinRoulette() {
+      const genre = document.getElementById('rouletteGenre').value;
+      const maxDur = Number(document.getElementById('rouletteDuration').value);
+      const pool = sharedState.movies.filter(m => {
+        const gOk = genre === 'Все' || m.genre === genre;
+        const dOk = !m.duration || m.duration <= maxDur;
+        return gOk && dOk && !sharedState.watched[m.id];
+      });
+
+      const box = document.getElementById('rouletteResult');
+      box.classList.remove('hidden');
+
+      if (!pool.length) {
+        box.innerHTML = `<p class="text-xs text-center text-rose-300">Под такие фильтры ничего не нашлось — попробуйте расширить условия.</p>`;
+        return;
+      }
+
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      box.innerHTML = `
+        <div class="bg-slate-900/90 border border-amber-400/30 rounded-2xl p-4 text-center animate-pop">
+          <span class="text-[11px] uppercase tracking-wider text-amber-300 font-bold">Сегодня смотрим:</span>
+          <h3 class="text-lg font-extrabold text-white mt-1">${pick.title}</h3>
+          <p class="text-xs text-slate-400 mt-1">${pick.genre} · ${pick.duration ? pick.duration + ' мин' : ''} · ★ ${pick.rating || '—'}</p>
+          <p class="text-xs text-slate-300 mt-2">${pick.desc || ''}</p>
+        </div>
+      `;
+    }
+
+    async function addCustomMovie(e) {
+      e.preventDefault();
+      const titleInput = document.getElementById('customTitle');
+      const genre = document.getElementById('customGenre').value;
+      const title = titleInput.value.trim();
+      if (!title) return;
+
+      const newMovie = {
+        id: 'custom_' + Date.now(),
+        title,
+        year: new Date().getFullYear(),
+        genre,
+        duration: 120,
+        rating: 'Наш',
+        desc: 'Добавлено в общий список пары.',
+        color: 'from-rose-500/30 to-indigo-600/30'
+      };
+
+      sharedState.movies.unshift(newMovie);
+      titleInput.value = '';
+      renderAll();
+      await pushToServer();
+    }
+
+    async function toggleWatched(id) {
+      sharedState.watched[id] = !sharedState.watched[id];
+      renderAll();
+      await pushToServer();
+    }
+
+    function renderMovieList() {
+      const container = document.getElementById('allMoviesList');
+      container.innerHTML = sharedState.movies.map(m => {
+        const heLiked = sharedState.votes.he[m.id] === 'like';
+        const sheLiked = sharedState.votes.she[m.id] === 'like';
+        return `
+          <div class="glass rounded-2xl p-3.5 flex items-center justify-between gap-2 ${sharedState.watched[m.id] ? 'opacity-50' : ''}">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <p class="font-semibold text-sm truncate ${sharedState.watched[m.id] ? 'line-through' : ''}">${m.title}</p>
+                ${heLiked ? '<span title="Он лайкнул">🙋‍♂️❤️</span>' : ''}
+                ${sheLiked ? '<span title="Она лайкнула">🙋‍♀️❤️</span>' : ''}
+              </div>
+              <p class="text-[11px] text-slate-400">${m.genre} · ★ ${m.rating || '—'}</p>
+            </div>
+            <button onclick="toggleWatched('${m.id}')" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-slate-800 text-[11px] font-medium text-slate-200">
+              ${sharedState.watched[m.id] ? '✓ Просмотрено' : 'Смотрели'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function switchTab(tab) {
+      ['swipe', 'matches', 'roulette', 'list'].forEach(t => {
+        document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById('nav-' + t);
+        btn.classList.toggle('text-rose-400', t === tab);
+        btn.classList.toggle('text-slate-400', t !== tab);
+      });
+    }
+
+    let qrGenerated = false;
+    function openQrModal() {
+      const modal = document.getElementById('qrModal');
+      modal.classList.remove('hidden');
+      const url = window.location.href;
+      document.getElementById('qrUrlText').textContent = url;
+      if (!qrGenerated) {
+        document.getElementById('qrcode').innerHTML = '';
+        new QRCode(document.getElementById('qrcode'), {
+          text: url,
+          width: 180,
+          height: 180,
+          colorDark: '#0b0d14',
+          colorLight: '#ffffff'
+        });
+        qrGenerated = true;
+      }
+    }
+
+    function closeQrModal() {
+      document.getElementById('qrModal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
+
